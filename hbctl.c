@@ -120,8 +120,13 @@ __attribute__ ((alias ("halt")));
 void hard_fault_handler(void)
 __attribute__ ((alias ("halt")));
 
+#define DEAT_TIME 8
+#define FREQ_1    1000000
+#define FREQ_2    500000
+#define FREQ_3    250000
+
 int main(void) {
-  uint32_t freq = 1000000;
+  uint32_t freq = FREQ_1;
   uint32_t i;
 
   /* Enable GPIOA and GPIOB */
@@ -134,7 +139,7 @@ int main(void) {
   gpio_set(GPIO_BANK_LED, GPIO_LED1);
 
   rcc_clock_setup_in_hsi_out_48mhz();
-  swcap_setup(freq, 32768, 4);
+  swcap_setup(freq, 32768, DEAT_TIME);
   gpio_set(GPIO_BANK_LED, GPIO_LED2);
 
   button_setup();
@@ -147,23 +152,23 @@ int main(void) {
     }
 
     switch (freq) {
-      case 1000000: {
-        freq = 800000;
+      case FREQ_1: {
+        freq = FREQ_2;
         gpio_set(GPIO_BANK_LED, GPIO_LED1);
         break;
       }
-      case 800000: {
-        freq = 600000;
+      case FREQ_2: {
+        freq = FREQ_3;
         gpio_set(GPIO_BANK_LED, GPIO_LED2);
         break;
       }
       default: {
-        freq = 1000000;
+        freq = FREQ_1;
         gpio_set(GPIO_BANK_LED, GPIO_LED1 | GPIO_LED2);
       }
     }
 
-    swcap_setup(freq, 32768, 4);
+    swcap_setup(freq, 32768, DEAT_TIME);
   }
 
   halt_normal();
