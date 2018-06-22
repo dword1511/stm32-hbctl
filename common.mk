@@ -1,5 +1,5 @@
 PROGRAM     = stm32-hbctl
-OBJS        = hbctl.o
+OBJS        = hbctl.o uart.o
 SERIAL     ?= /dev/ttyUSB0
 STLINKPORT ?= /dev/ttyACM0
 CROSS      ?= arm-none-eabi-
