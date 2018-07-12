@@ -25,8 +25,8 @@ static void swcap_setup_gpio(void) {
 
 static void swcap_setup_timer(uint16_t period, uint16_t duty, uint16_t deadtime) {
   rcc_periph_clock_enable(RCC_TIM1);
+  rcc_periph_reset_pulse(RST_TIM1);
 
-  timer_reset(TIM1);
   timer_disable_oc_output(TIM1, TIM_OC1);
   timer_disable_oc_output(TIM1, TIM_OC1N);
   timer_disable_oc_output(TIM1, TIM_OC2);
@@ -40,7 +40,9 @@ static void swcap_setup_timer(uint16_t period, uint16_t duty, uint16_t deadtime)
   timer_continuous_mode(TIM1);
 
   timer_set_period(TIM1, period);
-  timer_set_deadtime(TIM1, deadtime);
+  if (deadtime != 0) {
+    timer_set_deadtime(TIM1, deadtime);
+  }
 
   timer_set_break_lock(TIM1, TIM_BDTR_LOCK_OFF);
   timer_disable_break(TIM1);
@@ -120,10 +122,10 @@ __attribute__ ((alias ("halt")));
 void hard_fault_handler(void)
 __attribute__ ((alias ("halt")));
 
-#define DEAT_TIME 8
-#define FREQ_1    1000000
-#define FREQ_2    500000
-#define FREQ_3    250000
+#define DEAD_TIME 0 /* For L649x */
+#define FREQ_1    1500000
+#define FREQ_2    1000000
+#define FREQ_3    500000
 
 int main(void) {
   uint32_t freq = FREQ_1;
@@ -139,7 +141,7 @@ int main(void) {
   gpio_set(GPIO_BANK_LED, GPIO_LED1);
 
   rcc_clock_setup_in_hsi_out_48mhz();
-  swcap_setup(freq, 32768, DEAT_TIME);
+  swcap_setup(freq, 32768, DEAD_TIME);
   gpio_set(GPIO_BANK_LED, GPIO_LED2);
 
   button_setup();
@@ -168,7 +170,7 @@ int main(void) {
       }
     }
 
-    swcap_setup(freq, 32768, DEAT_TIME);
+    swcap_setup(freq, 32768, DEAD_TIME);
   }
 
   halt_normal();
