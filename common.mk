@@ -1,9 +1,6 @@
 PROGRAM     = stm32-hbctl
 OBJS        = hbctl.o
-SERIAL     ?= /dev/ttyUSB0
-STLINKPORT ?= /dev/ttyACM0
 CROSS      ?= arm-none-eabi-
-QEMU       ?= ~/qemu-stm32/bin/qemu-system-arm
 XTERM      ?= x-terminal-emulator --hold -e
 
 ###############################################################################
@@ -60,7 +57,7 @@ $(DMP): $(ELF)
 $(LIBOPENCM3):
 	# TODO: pass toolchain prefix
 	git submodule init
-	git submodule update --remote
+	git submodule update --init
 	make -C libopencm3 CFLAGS="$(CFLAGS)" $(OPENCM3_MK) V=1
 
 
@@ -81,6 +78,3 @@ size: $(ELF)
 
 symbols: $(ELF)
 	@$(NM) --demangle --size-sort -S $< | grep -v ' [bB] '
-
-monitor:
-	@stty -F $(SERIAL) raw 115200; cat $(SERIAL)

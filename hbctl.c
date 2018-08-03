@@ -60,9 +60,9 @@ static void swcap_setup_timer(uint16_t period, uint16_t duty, uint16_t deadtime)
 
 /* TIM1 as Switched Capacitor Clock Source */
 /* Use channel 2 or 3 to obtain complementary output without clashing with MCO */
-static void swcap_setup(uint32_t freq, uint16_t duty, uint16_t deadtime) {
+static void swcap_setup(uint32_t freq, uint8_t duty, uint16_t deadtime) {
   uint16_t period = rcc_apb2_frequency / freq - 1;
-  uint16_t ocv = (((uint32_t)duty) * ((uint32_t)period)) / 0xffff;
+  uint16_t ocv = (((uint32_t)duty) * ((uint32_t)period)) / 100 + 1;
   /* Period / duty calculation is OK */
 
   /* GPIOA, AFIO should have been enabled by this point */
@@ -122,10 +122,10 @@ __attribute__ ((alias ("halt")));
 void hard_fault_handler(void)
 __attribute__ ((alias ("halt")));
 
-#define DEAD_TIME 0 /* For L649x */
-#define FREQ_1    1500000
+#define DEAD_TIME 0 /* Controlled by hardware for L6491 */
+#define FREQ_1    1200000
 #define FREQ_2    1000000
-#define FREQ_3    500000
+#define FREQ_3    800000
 
 int main(void) {
   uint32_t freq = FREQ_1;
@@ -141,7 +141,7 @@ int main(void) {
   gpio_set(GPIO_BANK_LED, GPIO_LED1);
 
   rcc_clock_setup_in_hsi_out_48mhz();
-  swcap_setup(freq, 32768, DEAD_TIME);
+  swcap_setup(freq, 50, DEAD_TIME);
   gpio_set(GPIO_BANK_LED, GPIO_LED2);
 
   button_setup();
@@ -170,7 +170,7 @@ int main(void) {
       }
     }
 
-    swcap_setup(freq, 32768, DEAD_TIME);
+    swcap_setup(freq, 50, DEAD_TIME);
   }
 
   halt_normal();

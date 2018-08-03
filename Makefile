@@ -10,13 +10,9 @@ OPENCM3_MK  = lib/stm32/f0
 .PHONY: flash test
 
 flash: $(HEX)
-	@killall st-util || echo -n
 	@st-flash --reset --format ihex write $<
 
 test: $(BIN) $(ELF)
-	@killall st-util || echo -n
 	@$(XTERM) st-util --serial $(SERIAL) &
 	@$(GDB) $(ELF) -q -x gdb-stlink.cmd
 
-erase:
-	st-flash erase
