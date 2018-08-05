@@ -78,9 +78,14 @@ static void button_setup(void) {
 }
 
 static void button_wait(void) {
-  uint32_t i;
+  uint32_t i = 0;
 
-  while (!gpio_get(GPIO_BANK_BUT, GPIO_BUT));
+  while (!gpio_get(GPIO_BANK_BUT, GPIO_BUT)) {
+    i ++;
+    if (((i % 500000) == 1) || ((i % 500000) == 10000)) {
+      gpio_toggle(GPIO_BANK_LED, GPIO_LED1 | GPIO_LED2);
+    }
+  }
 
   /* De-bounce */
   for (i = 0; i < 100000; i ++) {
@@ -123,13 +128,13 @@ void hard_fault_handler(void)
 __attribute__ ((alias ("halt")));
 
 #define DEAD_TIME 0 /* Controlled by hardware for L6491 */
-#define FREQ_1    1200000
-#define FREQ_2    1000000
-#define FREQ_3    800000
+#define F_MAX     1200000
+#define F_MIN      800000
+#define F_STEP      20000
 
 int main(void) {
-  uint32_t freq = FREQ_1;
   uint32_t i;
+  uint32_t freq = F_MIN;
 
   /* Enable GPIOA and GPIOB */
   rcc_periph_clock_enable(RCC_GPIOA);
@@ -142,31 +147,31 @@ int main(void) {
 
   rcc_clock_setup_in_hsi_out_48mhz();
   swcap_setup(freq, 50, DEAD_TIME);
-  gpio_set(GPIO_BANK_LED, GPIO_LED2);
+  gpio_clear(GPIO_BANK_LED, GPIO_LED1);
 
   button_setup();
 
   while (true) {
     button_wait();
     gpio_clear(GPIO_BANK_LED, GPIO_LED1 | GPIO_LED2);
-    for (i = 0; i < 1000000; i ++) {
+    for (i = 0; i < 500000; i ++) {
       asm("nop\n");
     }
 
-    switch (freq) {
-      case FREQ_1: {
-        freq = FREQ_2;
+    freq += F_STEP;
+    if (freq > F_MAX) {
+      freq = F_MIN;
+    }
+
+    if (freq > ((F_MAX - F_MIN) * 3 / 4 + F_MIN)) {
+      gpio_set(GPIO_BANK_LED, GPIO_LED1 | GPIO_LED2);
+    } else {
+      if (freq > ((F_MAX - F_MIN) * 2 / 4 + F_MIN)) {
         gpio_set(GPIO_BANK_LED, GPIO_LED1);
-        break;
-      }
-      case FREQ_2: {
-        freq = FREQ_3;
-        gpio_set(GPIO_BANK_LED, GPIO_LED2);
-        break;
-      }
-      default: {
-        freq = FREQ_1;
-        gpio_set(GPIO_BANK_LED, GPIO_LED1 | GPIO_LED2);
+      } else {
+        if (freq > ((F_MAX - F_MIN) * 1 / 4 + F_MIN)) {
+          gpio_set(GPIO_BANK_LED, GPIO_LED2);
+        }
       }
     }
 
