@@ -15,7 +15,6 @@ static uint8_t  channel_array_1[16] = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 
 static void setup_adc(void) {
   /* Set ADC clock to 14 MHz */
-  adc_set_clk_source(ADC1, ADC_CLKSOURCE_ADC);
   rcc_periph_clock_enable(RCC_ADC1);
 
   /* Configure PA2 and PA4 for analog input */
@@ -27,15 +26,15 @@ static void setup_adc(void) {
   gpio_mode_setup(GPIOA, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO0 | GPIO2);
   gpio_clear(GPIOA, GPIO0 | GPIO2);
 
-  adc_disable_temperature_sensor();
   adc_power_off(ADC1);
+  adc_set_clk_source(ADC1, ADC_CLKSOURCE_ADC);
+  adc_calibrate(ADC1);
+  adc_set_regular_sequence(ADC1, 1, channel_array_1);
+  adc_set_continuous_conversion_mode(ADC1);
   adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR_SMP_239DOT5); /* (239.5 + 1.5 = 58 ksps) */
   adc_set_right_aligned(ADC1);
   adc_power_on(ADC1);
-  adc_calibrate(ADC1);
-  adc_set_regular_sequence(ADC1, 1, channel_array_1);
 
-  adc_set_continuous_conversion_mode(ADC1);
   adc_start_conversion_regular(ADC1);
 }
 
@@ -211,12 +210,16 @@ int main(void) {
     delay_a_bit(); /* Wait for current to settle */
     adc = read_adc();
     if ((adc_prev == 0) || ((adc < adc_prev) && (adc > CURR_LOW))) {
-      freq -= F_STEP;
+      if (freq > F_MIN) {
+        freq -= F_STEP;
+      }
       swcap_setup(freq, 50, DEAD_TIME);
     } else {
       /* Stop switching for a while so FETs recover */
       timer_disable_counter(TIM1);
-      freq += F_STEP;
+      if (freq < F_MAX) {
+        freq += F_STEP;
+      }
       delay_a_bit();
       swcap_setup(freq, 50, DEAD_TIME);
       timer_enable_counter(TIM1);
