@@ -14,7 +14,6 @@ static uint8_t  channel_array_1[16] = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 
 
 static void setup_adc(void) {
-  /* Set ADC clock to 14 MHz */
   rcc_periph_clock_enable(RCC_ADC1);
 
   /* Configure PA2 and PA4 for analog input */
@@ -27,26 +26,30 @@ static void setup_adc(void) {
   gpio_clear(GPIOA, GPIO0 | GPIO2);
 
   adc_power_off(ADC1);
-  adc_set_clk_source(ADC1, ADC_CLKSOURCE_ADC);
+  adc_set_clk_source(ADC1, ADC_CLKSOURCE_PCLK_DIV4); /* Set ADC clock to 12 MHz */
   adc_calibrate(ADC1);
   adc_set_regular_sequence(ADC1, 1, channel_array_1);
-  adc_set_continuous_conversion_mode(ADC1);
-  adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR_SMP_239DOT5); /* (239.5 + 1.5 = 58 ksps) */
+  adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR_SMP_239DOT5); /* (239.5 + 1.5 ~= 50 ksps) */
+  adc_set_resolution(ADC1, ADC_RESOLUTION_12BIT);
   adc_set_right_aligned(ADC1);
+  ADC_CFGR1(ADC1) |= ADC_CFGR1_AUTDLY; /* Do not start conversion until DR is read. Avoids race conditions. */
   adc_power_on(ADC1);
+  //while (!adc_is_power_on(ADC1));
 
+  adc_set_continuous_conversion_mode(ADC1);
   adc_start_conversion_regular(ADC1);
 }
 
-#define ADC_OVERSAMPLE 10
+#define ADC_OVERSAMPLE 20000 /* ~ 400ms */
 
 static uint32_t read_adc(void) {
   /* Oversample act as FIR LPF */
   uint32_t adc_acc = 0;
-  int i;
+  int radc_i;
 
   adc_read_regular(ADC1);
-  for (i = 0; i < ADC_OVERSAMPLE; i ++) {
+  for (radc_i = 0; radc_i < ADC_OVERSAMPLE; radc_i ++) {
+    while (!adc_eoc(ADC1));
     adc_acc += adc_read_regular(ADC1);
   }
 
@@ -176,7 +179,7 @@ __attribute__ ((alias ("halt")));
 static void delay_a_bit(void) {
   uint32_t i;
 
-  for (i = 0; i < 100000; i ++) {
+  for (i = 0; i < 1000000; i ++) {
     asm("nop\n");
   }
 }
@@ -184,13 +187,21 @@ static void delay_a_bit(void) {
 #define DEAD_TIME 0 /* Controlled by hardware for L6491 */
 #define F_MAX     1200000
 #define F_MIN      800000
-#define F_STEP      10000
+#define F_STEP      20000 /* 1/48MHz ~= 21ns. @ 800kHz, delta_f = 13kHz. @ 1200kHz, delta_f = 29kHz. */
+#define N_FREQ    ((F_MAX - F_MIN) / F_STEP + 1)
 
-#define CURR_LOW  (4 * ADC_OVERSAMPLE) /* 10mA * 0.33Ohm = 3.3mV, 3.3V / 2 ^ 12-bit = 0.81mV/digit, 3.3mV = 4 digits */
+#define CURR_LOW  150 /* mA. ~60 noise floor... */
+
+/* FIXME: OCP condition should be determined by pattern rather than absolute value. */
+
+
+/* NOTE: Local minimum won't work due to noise & transient effects */
 
 int main(void) {
-  uint32_t freq = F_MAX;
-  uint32_t adc, adc_prev = 0;
+  uint32_t i;
+  volatile uint32_t freq, i_min, adc_min, i_max_ocp; /* Want debugger access for these */
+  uint32_t adc[N_FREQ];
+  uint32_t curr_ma[N_FREQ]; /* Also for debugger access */
 
   /* Enable GPIOA and GPIOB */
   rcc_periph_clock_enable(RCC_GPIOA);
@@ -203,28 +214,48 @@ int main(void) {
   rcc_clock_setup_in_hsi_out_48mhz();
   setup_adc();
   button_setup();
-  swcap_setup(freq, 50, DEAD_TIME);
   gpio_set(GPIO_BANK_LED, GPIO_LED2);
 
   while (true) {
-    delay_a_bit(); /* Wait for current to settle */
-    adc = read_adc();
-    if ((adc_prev == 0) || ((adc < adc_prev) && (adc > CURR_LOW))) {
-      if (freq > F_MIN) {
-        freq -= F_STEP;
-      }
-      swcap_setup(freq, 50, DEAD_TIME);
-    } else {
-      /* Stop switching for a while so FETs recover */
-      timer_disable_counter(TIM1);
-      if (freq < F_MAX) {
-        freq += F_STEP;
-      }
+    button_wait();
+    gpio_clear(GPIO_BANK_LED, GPIO_LED1);
+
+    for (i = 0; i < N_FREQ; i ++) {
+      freq = F_MIN + i * F_STEP;
       delay_a_bit();
       swcap_setup(freq, 50, DEAD_TIME);
-      timer_enable_counter(TIM1);
+      delay_a_bit();
+      gpio_set(GPIO_BANK_LED, GPIO_LED1);
+      adc[i] = read_adc();
+      curr_ma[i] = (adc[i] / ADC_OVERSAMPLE) * 300 / 81;
+      gpio_clear(GPIO_BANK_LED, GPIO_LED1);
+      timer_disable_counter(TIM1);
     }
-    adc_prev = adc;
+
+    /* FIXME: assuming lowest freq does not trip OCP */
+    adc_min = adc[0];
+    i_min = 0;
+    for (i = 1; i < N_FREQ; i ++) {
+      if (curr_ma[i] < CURR_LOW) {
+        i_max_ocp = i;
+        continue;
+      }
+      if (adc[i] < adc_min) {
+        adc_min = adc[i];
+        i_min = i;
+      }
+    }
+
+    if (i_max_ocp + 1 < N_FREQ) {
+      // FIXME: should be determined by slope in adc[] or curr_ma[]
+      freq = F_MIN + (i_max_ocp + 1) * F_STEP;
+    } else {
+      // NOTE: fallback. Not actually what would work.
+      freq = F_MIN + i_min * F_STEP;
+    }
+    swcap_setup(freq, 50, DEAD_TIME);
+
+    gpio_set(GPIO_BANK_LED, GPIO_LED1);
   }
 
   halt_normal();
