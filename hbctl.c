@@ -1,12 +1,58 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/timer.h>
+#include <libopencm3/stm32/adc.h>
 
 #define GPIO_BANK_BUT GPIOA
 #define GPIO_BUT      GPIO0
 #define GPIO_BANK_LED GPIOC
 #define GPIO_LED1     GPIO8
 #define GPIO_LED2     GPIO9
+
+
+static uint8_t  channel_array_1[16] = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+
+static void setup_adc(void) {
+  /* Set ADC clock to 14 MHz */
+  adc_set_clk_source(ADC1, ADC_CLKSOURCE_ADC);
+  rcc_periph_clock_enable(RCC_ADC1);
+
+  /* Configure PA2 and PA4 for analog input */
+
+  gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO1);
+
+  /* Configure PA1, PA3 and PA5 as guard (ground) */
+  gpio_set_output_options(GPIOA, GPIO_OTYPE_OD, GPIO_OSPEED_100MHZ, GPIO0 | GPIO2);
+  gpio_mode_setup(GPIOA, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO0 | GPIO2);
+  gpio_clear(GPIOA, GPIO0 | GPIO2);
+
+  adc_disable_temperature_sensor();
+  adc_power_off(ADC1);
+  adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR_SMP_239DOT5); /* (239.5 + 1.5 = 58 ksps) */
+  adc_set_right_aligned(ADC1);
+  adc_power_on(ADC1);
+  adc_calibrate(ADC1);
+  adc_set_regular_sequence(ADC1, 1, channel_array_1);
+
+  adc_set_continuous_conversion_mode(ADC1);
+  adc_start_conversion_regular(ADC1);
+}
+
+#define ADC_OVERSAMPLE 10
+
+static uint32_t read_adc(void) {
+  /* Oversample act as FIR LPF */
+  uint32_t adc_acc = 0;
+  int i;
+
+  adc_read_regular(ADC1);
+  for (i = 0; i < ADC_OVERSAMPLE; i ++) {
+    adc_acc += adc_read_regular(ADC1);
+  }
+
+  return adc_acc;
+}
 
 static void swcap_setup_gpio(void) {
   /* These should be PA9 and PA10 */
@@ -18,7 +64,7 @@ static void swcap_setup_gpio(void) {
   gpio_set_af(GPIOA, GPIO_AF2, GPIO9);
   gpio_set_af(GPIOB, GPIO_AF2, GPIO0);
 
-  /* In case of EMI */
+  /* In case of EMI (ADC setup already done) */
   gpio_port_config_lock(GPIOA, GPIO9);
   gpio_port_config_lock(GPIOB, GPIO0);
 }
@@ -127,14 +173,25 @@ __attribute__ ((alias ("halt")));
 void hard_fault_handler(void)
 __attribute__ ((alias ("halt")));
 
+
+static void delay_a_bit(void) {
+  uint32_t i;
+
+  for (i = 0; i < 100000; i ++) {
+    asm("nop\n");
+  }
+}
+
 #define DEAD_TIME 0 /* Controlled by hardware for L6491 */
 #define F_MAX     1200000
 #define F_MIN      800000
-#define F_STEP      20000
+#define F_STEP      10000
+
+#define CURR_LOW  (4 * ADC_OVERSAMPLE) /* 10mA * 0.33Ohm = 3.3mV, 3.3V / 2 ^ 12-bit = 0.81mV/digit, 3.3mV = 4 digits */
 
 int main(void) {
-  uint32_t i;
-  uint32_t freq = F_MIN;
+  uint32_t freq = F_MAX;
+  uint32_t adc, adc_prev = 0;
 
   /* Enable GPIOA and GPIOB */
   rcc_periph_clock_enable(RCC_GPIOA);
@@ -144,38 +201,27 @@ int main(void) {
   led_setup();
 
   gpio_set(GPIO_BANK_LED, GPIO_LED1);
-
   rcc_clock_setup_in_hsi_out_48mhz();
-  swcap_setup(freq, 50, DEAD_TIME);
-  gpio_clear(GPIO_BANK_LED, GPIO_LED1);
-
+  setup_adc();
   button_setup();
+  swcap_setup(freq, 50, DEAD_TIME);
+  gpio_set(GPIO_BANK_LED, GPIO_LED2);
 
   while (true) {
-    button_wait();
-    gpio_clear(GPIO_BANK_LED, GPIO_LED1 | GPIO_LED2);
-    for (i = 0; i < 500000; i ++) {
-      asm("nop\n");
-    }
-
-    freq += F_STEP;
-    if (freq > F_MAX) {
-      freq = F_MIN;
-    }
-
-    if (freq > ((F_MAX - F_MIN) * 3 / 4 + F_MIN)) {
-      gpio_set(GPIO_BANK_LED, GPIO_LED1 | GPIO_LED2);
+    delay_a_bit(); /* Wait for current to settle */
+    adc = read_adc();
+    if ((adc_prev == 0) || ((adc < adc_prev) && (adc > CURR_LOW))) {
+      freq -= F_STEP;
+      swcap_setup(freq, 50, DEAD_TIME);
     } else {
-      if (freq > ((F_MAX - F_MIN) * 2 / 4 + F_MIN)) {
-        gpio_set(GPIO_BANK_LED, GPIO_LED1);
-      } else {
-        if (freq > ((F_MAX - F_MIN) * 1 / 4 + F_MIN)) {
-          gpio_set(GPIO_BANK_LED, GPIO_LED2);
-        }
-      }
+      /* Stop switching for a while so FETs recover */
+      timer_disable_counter(TIM1);
+      freq += F_STEP;
+      delay_a_bit();
+      swcap_setup(freq, 50, DEAD_TIME);
+      timer_enable_counter(TIM1);
     }
-
-    swcap_setup(freq, 50, DEAD_TIME);
+    adc_prev = adc;
   }
 
   halt_normal();
