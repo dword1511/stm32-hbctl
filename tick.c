@@ -38,6 +38,7 @@ void tick_setup(uint32_t target_period_ms) {
   rcc_wait_for_osc_ready(RCC_LSI);
   iwdg_set_period_ms(target_period_ms * 2);
   iwdg_start();
+  //iwdg_reset(); /* Kick the dog here does not prevent double reset after DFU */
 }
 
 void tick_delay_ms(uint32_t ms) {

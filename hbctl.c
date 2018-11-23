@@ -114,6 +114,10 @@ int main(void) {
   pwm_setup();
   tick_setup(TICK_PERIOD_MS);
 
+  /* In case of EMI (all GPIO setup done) */
+  gpio_port_config_lock(GPIOA, GPIO_ALL);
+  gpio_port_config_lock(GPIOB, GPIO_ALL);
+
   if (reset_reason & (RCC_CSR_WWDGRSTF | RCC_CSR_IWDGRSTF)) {
     /* Notify WDG reset */
     while (true) {
@@ -122,17 +126,13 @@ int main(void) {
     }
   }
 
-  /* In case of EMI (ADC setup already done) */
-  gpio_port_config_lock(GPIOA, GPIO_ALL);
-  gpio_port_config_lock(GPIOB, GPIO_ALL);
-
   {
     uint32_t freq = F_MIN;
 
     while (true) {
       wait_button();
 
-      if (gpio_get(GPIO_PORT_LED, HCI_LED_RUN)) {
+      if (!gpio_get(GPIO_PORT_LED, HCI_LED_RUN)) {
         /* Bridge has been disabled due to POR or OVP, (re)enable per user request */
         pwm_enable();
       } else {
