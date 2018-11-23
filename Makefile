@@ -33,13 +33,12 @@ OBJS       := $(SRCS:.c=.o)
 CFLAGS     += -Wall -Wextra -Wdouble-promotion -gdwarf-4 -g3
 #CFLAGS     += -Wconversion -Wno-sign-conversion
 # Optimizations
-# NOTE: without optimization everything will fail... Computational power is marginal.
-CFLAGS     += -O3 -fbranch-target-load-optimize -fipa-pta -frename-registers -fgcse-sm -fgcse-las -fsplit-loops -fstdarg-opt
+CFLAGS     += -O2 -fbranch-target-load-optimize -fipa-pta -frename-registers -fgcse-sm -fgcse-las -fsplit-loops -fstdarg-opt
 # Use these for debugging-friendly binary
 #CFLAGS     += -O0
-CFLAGS     += -Og
+#CFLAGS     += -Og
 # Disabling aggressive loop optimizations since it does not work for loops longer than certain iterations
-#CFLAGS     += -fno-aggressive-loop-optimizations
+CFLAGS     += -fno-aggressive-loop-optimizations
 # Aggressive optimizations (unstable or causes huge binaries)
 #CFLAGS     += -funroll-loops -fbranch-target-load-optimize2
 # Includes
@@ -54,7 +53,7 @@ PRECOMPILE  = mkdir -p $(dir $(DEPDIR)/$*.Td)
 POSTCOMPILE = mv -f $(DEPDIR)/$*.Td $(DEPDIR)/$*.d && touch $@
 
 # Architecture-dependent
-LDSCRIPT   := libopencm3/lib/stm32/f0/stm32f04xz6.ld
+LDSCRIPT   := stm32f042f4.ld
 OPENCM3_MK := lib/stm32/f0
 LIBOPENCM3 := libopencm3/lib/libopencm3_stm32f0.a
 FP_FLAGS   := -msoft-float
@@ -99,7 +98,7 @@ $(LIBOPENCM3) $(LDSCRIPT): Makefile
 	touch $(LDSCRIPT)
 
 
-.PHONY: default clean distclean size symbols symbols_bss flash erase debug monitor check
+.PHONY: default clean distclean size symbols flash-stlink flash-dfu erase-stlink debug
 
 clean:
 	rm -f $(OBJS) $(ELF) $(HEX) $(BIN) $(MAP) $(DMP)
@@ -118,18 +117,18 @@ size: $(ELF)
 symbols: $(ELF)
 	@$(NM) --demangle --size-sort -S $< | grep -v ' [bB] '
 
-symbols_bss: $(ELF)
-	@$(NM) --demangle --size-sort -S $< | grep ' [bB] '
-
-flash: $(HEX)
+flash-stlink: $(HEX)
 	@killall st-util || echo
 	@st-flash --reset --format ihex write $<
 
-erase:
+flash-dfu: $(BIN)
+	@dfu-util -a 0 -d 0483:df11 -s 0x08000000:leave -D $<
+
+erase-stlink:
 	@killall st-util || echo
 	@st-flash erase
 
-debug: $(ELF) flash
+debug: $(ELF) flash-stlink
 	@killall st-util || echo
 	@setsid st-util &
 	@-$(GDB) $< -q -ex 'target extended-remote localhost:4242'

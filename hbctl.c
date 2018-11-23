@@ -1,7 +1,11 @@
+#include <libopencm3/cm3/systick.h>
+#include <libopencm3/cm3/nvic.h>
+
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/timer.h>
 #include <libopencm3/stm32/adc.h>
+#include <libopencm3/stm32/iwdg.h>
 
 
 #define GPIO_PORT_BUT GPIOB
@@ -24,7 +28,7 @@
 #define ADC_DIGITS    (1 << 12)
 #define ADC_CLOCK     12000000
 #define ADC_CONV_CYCS 241   /* 239.5 + 1.5 */
-#define ADC_SAMP_T_MS 50
+#define ADC_SAMP_T_MS 5
 #define ADC_OVERSAMP  (((ADC_CLOCK / 1000 / 2) * ADC_SAMP_T_MS) / ADC_CONV_CYCS) /* Each measurement samples 2 channels */
 
 #define GPIO_PORT_PWM GPIOA
@@ -114,9 +118,13 @@ static void disable_pwm(void) {
   /* Must be in this sequence to avoid shoot-through */
   timer_set_oc_mode(PWM_TIM, PWM_OC_HI, TIM_OCM_INACTIVE);
   timer_set_oc_mode(PWM_TIM, PWM_OC_LO, TIM_OCM_ACTIVE);
+
+  gpio_clear(GPIO_PORT_LED, GPIO_PIN_LED2);
 }
 
 static void enable_pwm(void) {
+  gpio_set(GPIO_PORT_LED, GPIO_PIN_LED2);
+
   /* Must be in this sequence to avoid shoot-through */
   timer_set_oc_mode(PWM_TIM, PWM_OC_LO, TIM_OCM_PWM2);
   timer_set_oc_mode(PWM_TIM, PWM_OC_HI, TIM_OCM_PWM1);
@@ -181,10 +189,30 @@ static void config_pwm(uint32_t freq, uint8_t duty, uint8_t deadtime) {
   enable_pwm();
 }
 
+/* HCI/OVP */
+
+#define SYSCLK_PERIOD_MS  10
+#define OVP_MA            1000
+#define DELAY_LONG_MS     500
+#define DELAY_SHORT_MS    50
+#define BLINK_MS          150
+
+
+static volatile uint64_t  uptime_ms = 0;
+
+
+static void delay_ms(uint32_t ms) {
+  uint32_t target = uptime_ms + ms;
+
+  while (uptime_ms < target) {
+    asm("wfi");
+  }
+}
+
 static void delay_a_bit(void) {
   uint32_t i;
 
-  for (i = 0; i < 1000000; i ++) {
+  for (i = 0; i < 3000000; i ++) {
     asm("nop\n");
   }
 }
@@ -194,46 +222,77 @@ static void setup_hci(void) {
 
   gpio_set_output_options(GPIO_PORT_LED, GPIO_OTYPE_PP, GPIO_OSPEED_2MHZ, GPIO_PIN_LED1 | GPIO_PIN_LED2);
   gpio_mode_setup(GPIO_PORT_LED, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO_PIN_LED1 | GPIO_PIN_LED2);
+
+  delay_a_bit(); /* System tick unavailable yet */
   gpio_set(GPIO_PORT_LED, GPIO_PIN_LED1 | GPIO_PIN_LED2);
   delay_a_bit();
   gpio_clear(GPIO_PORT_LED, GPIO_PIN_LED1 | GPIO_PIN_LED2);
+  delay_a_bit();
+  delay_a_bit();
 }
 
 static void wait_button(void) {
   uint32_t i = 0;
 
   while (!gpio_get(GPIO_PORT_BUT, GPIO_PIN_BUT)) {
-    i ++;
-    if (((i % 500000) == 1) || ((i % 500000) == 10000)) {
-      gpio_toggle(GPIO_PORT_LED, GPIO_PIN_LED1 | GPIO_PIN_LED2);
-    }
+    asm("wfi");
   }
 
   /* De-bounce */
-  for (i = 0; i < 100000; i ++) {
+  for (i = 0; i < 30000; i ++) {
     if (gpio_get(GPIO_PORT_BUT, GPIO_PIN_BUT)) {
       i = 0;
     }
   }
 }
 
-#define F_MAX     1200000
-#define F_MIN      800000
-#define F_STEP      20000 /* 1/48MHz ~= 21ns. @ 800kHz, delta_f = 13kHz. @ 1200kHz, delta_f = 29kHz. */
+void sys_tick_handler(void) {
+  /* Over current protection */
+  if (read_adc_ma() > OVP_MA) {
+    disable_pwm();
+  }
+
+  uptime_ms += SYSCLK_PERIOD_MS;
+
+  if ((uptime_ms) % BLINK_MS == 0) {
+    gpio_toggle(GPIO_PORT_LED, GPIO_PIN_LED1);
+  }
+
+  iwdg_reset();
+}
+
+static void setup_tick(void) {
+  unsigned period = rcc_ahb_frequency * SYSCLK_PERIOD_MS / 1000 - 1;
+
+  systick_set_clocksource(STK_CSR_CLKSOURCE_AHB);
+  systick_set_reload(period);
+  systick_clear();
+
+  nvic_set_priority(NVIC_SYSTICK_IRQ, 80);
+  systick_interrupt_enable();
+  systick_counter_enable();
+
+  rcc_osc_on(RCC_LSI);
+  rcc_wait_for_osc_ready(RCC_LSI);
+  iwdg_set_period_ms(SYSCLK_PERIOD_MS * 2);
+  iwdg_start();
+}
+
+
+#define F_MAX     1100000
+#define F_MIN      900000
+#define F_STEP      10000 /* 1/48MHz ~= 21ns. @ 800kHz, delta_f = 13kHz. @ 1200kHz, delta_f = 29kHz. */
 #define N_FREQ    ((F_MAX - F_MIN) / F_STEP + 1)
-#define DUTY      100 /* out of 255. TODO: Feedback mechanism */
-#define DEAD_TIME 20
+#define DUTY          127 /* out of 255. Use 127 for soft switching */
+#define DEAD_TIME      20
+/* TODO: tune HSI instead of timer */
 
-#define CURR_LOW  150 /* mA. ~60 noise floor... */
-
-// TODO: improve algorithm for hunting optimal work point...
 
 int main(void) {
-  uint32_t i;
-  /* Want debugger access for these */
-  volatile uint32_t freq, i_min, curr_min, i_max_ocp;
-  volatile uint32_t curr_ma[N_FREQ];
+  uint32_t reset_reason = RCC_CSR & RCC_CSR_RESET_FLAGS;
+  RCC_CSR |= RCC_CSR_RMVF; /* Clear reset flags */
 
+  rcc_clock_setup_in_hsi_out_48mhz();
   /* Enable GPIOA and GPIOB */
   rcc_periph_clock_enable(RCC_GPIOA);
   rcc_periph_clock_enable(RCC_GPIOB);
@@ -241,53 +300,39 @@ int main(void) {
   setup_hci();
 
   gpio_set(GPIO_PORT_LED, GPIO_PIN_LED1);
-  rcc_clock_setup_in_hsi_out_48mhz();
   setup_adc();
+  setup_tick();
   setup_pwm();
-  gpio_set(GPIO_PORT_LED, GPIO_PIN_LED2);
+
+  if (reset_reason & (RCC_CSR_WWDGRSTF | RCC_CSR_IWDGRSTF)) {
+    /* Notify WDG reset */
+    while (true) {
+      delay_ms(DELAY_SHORT_MS);
+      gpio_toggle(GPIO_PORT_LED, GPIO_PIN_LED1 | GPIO_PIN_LED2);
+    }
+  }
 
   /* In case of EMI (ADC setup already done) */
   gpio_port_config_lock(GPIOA, GPIO_ALL);
   gpio_port_config_lock(GPIOB, GPIO_ALL);
 
-  while (true) {
+  {
+    uint32_t freq = F_MIN;
+
     wait_button();
-    gpio_clear(GPIO_PORT_LED, GPIO_PIN_LED1);
-
-    for (i = 0; i < N_FREQ; i ++) {
-      freq = F_MIN + i * F_STEP;
-      delay_a_bit();
-      config_pwm(freq, DUTY, DEAD_TIME);
-      delay_a_bit();
-      gpio_set(GPIO_PORT_LED, GPIO_PIN_LED1);
-      curr_ma[i] = read_adc_ma();
-      gpio_clear(GPIO_PORT_LED, GPIO_PIN_LED1);
-      disable_pwm();
-    }
-
-    curr_min = curr_ma[0];
-    i_min = 0;
-    for (i = 1; i < N_FREQ; i ++) {
-      if (curr_ma[i] < CURR_LOW) {
-        i_max_ocp = i;
-        continue;
-      }
-      if (curr_ma[i] < curr_min) {
-        curr_min = curr_ma[i];
-        i_min = i;
-      }
-    }
-
-    if (i_max_ocp + 1 < N_FREQ) {
-      // FIXME: should be determined by slope in curr_ma[]
-      freq = F_MIN + (i_max_ocp + 1) * F_STEP;
-    } else {
-      // NOTE: fallback. Not actually what would work.
-      freq = F_MIN + i_min * F_STEP;
-    }
     config_pwm(freq, DUTY, DEAD_TIME);
 
-    gpio_set(GPIO_PORT_LED, GPIO_PIN_LED1);
+    while (true) {
+      wait_button();
+      disable_pwm();
+      delay_ms(DELAY_SHORT_MS);
+
+      freq += F_STEP;
+      if (freq > F_MAX) {
+        freq = F_MIN;
+      }
+      config_pwm(freq, DUTY, DEAD_TIME);
+    }
   }
 
   return 0;
