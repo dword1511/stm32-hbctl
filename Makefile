@@ -1,5 +1,5 @@
 PROGRAM    := stm32-hbctl
-SRCS       := hbctl.c
+SRCS       := cs.c pwm.c tick.c hsi48trim.c hbctl.c
 CROSS      ?= arm-none-eabi-
 
 ###############################################################################
