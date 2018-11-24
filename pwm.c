@@ -66,9 +66,9 @@ void pwm_config(uint32_t freq, uint8_t duty, uint8_t deadtime) {
 }
 
 uint32_t pwm_get_next_freq(void) {
-  uint16_t next_period = TIM_ARR(PWM_TIM) + 1;
+  uint16_t next_period = TIM_ARR(PWM_TIM) - 1;
 
-  return rcc_apb1_frequency / ((next_period + 1) * 2) + 1; /* Plus 1 so (future) rounding does not cause error */
+  return rcc_apb1_frequency / ((next_period + 1) * 2);
 }
 
 void pwm_enable(void) {

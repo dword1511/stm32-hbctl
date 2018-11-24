@@ -30,13 +30,13 @@ OBJS       := $(SRCS:.c=.o)
 
 # Debugging (code has to be bullet-proof since it can cause physical damage!)
 # NOTE: Most unsigned constants is missing the U
-CFLAGS     += -Wall -Wextra -Wdouble-promotion -gdwarf-4 -g3
+CFLAGS     += -Wall -Wextra -Wdouble-promotion -gdwarf-4 -g3 -ggdb3
 #CFLAGS     += -Wconversion -Wno-sign-conversion
 # Optimizations
-CFLAGS     += -O2 -fbranch-target-load-optimize -fipa-pta -frename-registers -fgcse-sm -fgcse-las -fsplit-loops -fstdarg-opt
+#CFLAGS     += -O2 -fbranch-target-load-optimize -fipa-pta -frename-registers -fgcse-sm -fgcse-las -fsplit-loops -fstdarg-opt
 # Use these for debugging-friendly binary
 #CFLAGS     += -O0
-#CFLAGS     += -Og
+CFLAGS     += -Og
 # Disabling aggressive loop optimizations since it does not work for loops longer than certain iterations
 CFLAGS     += -fno-aggressive-loop-optimizations
 # Aggressive optimizations (unstable or causes huge binaries)
