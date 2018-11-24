@@ -128,10 +128,10 @@ erase-stlink:
 	@killall st-util || echo
 	@st-flash erase
 
-debug: $(ELF) flash-stlink
+debug: $(ELF)
 	@killall st-util || echo
 	@setsid st-util &
-	@-$(GDB) $< -q -ex 'target extended-remote localhost:4242'
+	@-$(GDB) $< -q -ex 'target extended-remote localhost:4242' -ex 'load'
 
 # Dependencies
 $(DEPDIR)/%.d:
