@@ -32,6 +32,7 @@ uint16_t hsi48trim_get(void) {
 uint16_t hsi48trim_goto_next(void) {
   uint16_t trim = hsi48trim_get();
 
+  trim ++;
   if (trim >= HSI48TRIM_MAX) {
     trim = 0;
   }

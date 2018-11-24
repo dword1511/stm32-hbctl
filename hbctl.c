@@ -134,22 +134,22 @@ int main(void) {
 
       if (!gpio_get(GPIO_PORT_LED, HCI_LED_RUN)) {
         /* Bridge has been disabled due to POR or OVP, (re)enable per user request */
-        pwm_enable();
+        pwm_config(freq, DUTY, DEAD_TIME);
       } else {
         pwm_disable();
         tick_delay_ms(DELAY_SHORT_MS);
 
-        if (hsi48trim_goto_next() == 0) {
+        //if (hsi48trim_goto_next() == 0) {
           /* HSI48 trimming has gone through one round, do coarse adjustment */
           freq = pwm_get_next_freq();
           if (freq > F_MAX) {
             freq = F_MIN;
           }
           pwm_config(freq, DUTY, DEAD_TIME);
-        } else {
+        //} else {
           /* Fine adjustment has been done */
-          pwm_enable();
-        }
+        //  pwm_enable();
+        //}
       }
     }
   }
