@@ -13,6 +13,9 @@
 #include "pwm.h"
 
 
+#define TO_TIM_SCALE(T, tr) (((uint32_t)(tr)) * (T) / 255)
+
+
 //TODO: sync (use ETR to reset counter...)
 void pwm_setup(void) {
   gpio_set_output_options(GPIO_PORT_PWM, GPIO_OTYPE_PP, GPIO_OSPEED_100MHZ, GPIO_PIN_HI | GPIO_PIN_LO);
@@ -49,8 +52,8 @@ void pwm_setup(void) {
 /* freq in Hz, duty/deadtime in 0 - 255 */
 void pwm_config(uint32_t freq, uint8_t duty, uint8_t deadtime) {
   uint16_t period = rcc_apb1_frequency / (freq * 2) - 1;
-  uint16_t ocv_hi = (((uint32_t)duty) * ((uint32_t)period)) / 255 + 1;
-  uint16_t ocv_lo = ocv_hi + (((uint32_t)deadtime) * ((uint32_t)period)) / 255;
+  uint16_t ocv_hi = TO_TIM_SCALE(period, duty - deadtime / 2);
+  uint16_t ocv_lo = TO_TIM_SCALE(period, 255 - duty + deadtime / 2);
 
   pwm_disable(); /* Avoid shoot-through */
 

@@ -15,8 +15,8 @@
 #define F_TOL           200000
 #define F_MAX           (F_NOM + F_TOL)
 #define F_MIN           (F_NOM - F_TOL)
-#define DUTY            127 /* out of 255. Use 127 for soft switching */
-#define DEAD_TIME       20
+#define DUTY            120 /* out of 255. Use 127 or less for soft switching */
+#define DEAD_TIME       80
 #define DELAY_LONG_MS   500
 #define DELAY_SHORT_MS  50
 
@@ -91,7 +91,6 @@ void tick_routine_cb(void) {
 }
 
 
-/* TODO: tune HSI instead of timer */
 int main(void) {
   uint32_t reset_reason = RCC_CSR & RCC_CSR_RESET_FLAGS;
   RCC_CSR |= RCC_CSR_RMVF; /* Clear reset flags */

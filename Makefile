@@ -44,7 +44,7 @@ CFLAGS     += -fno-aggressive-loop-optimizations
 # Includes
 CFLAGS     += -Ilibopencm3/include/ -I$(TOPDIR)
 # General for MCU
-CFLAGS     += -fno-common -ffunction-sections -fdata-sections -fsingle-precision-constant -ffast-math -flto --specs=nano.specs
+CFLAGS     += -fno-common -ffunction-sections -fdata-sections -fsingle-precision-constant --specs=nano.specs
 
 # Generate dependency information
 CFLAGS     += -MT $@ -MMD -MP -MF $(DEPDIR)/$*.Td
