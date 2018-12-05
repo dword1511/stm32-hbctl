@@ -11,12 +11,13 @@
 #define TICK_PERIOD_MS  10
 #define CS_SAMP_T_MS    5 /* Must be smaller than tick interval */
 #define OVP_MA          1000
-#define F_NOM           900000
+#define F_NOM           800000
 #define F_TOL           100000
+#define F_TOL_COARSE    100000
 #define F_MAX           (F_NOM + F_TOL)
 #define F_MIN           (F_NOM - F_TOL)
 #define DUTY            127 /* out of 255. Use 127 or less for soft switching */
-#define DEAD_TIME       100
+#define DEAD_TIME       20
 #define DELAY_LONG_MS   500
 #define DELAY_SHORT_MS  50
 
@@ -138,6 +139,8 @@ int main(void) {
         pwm_disable();
         tick_delay_ms(DELAY_SHORT_MS);
 
+#if F_TOL_COARSE >= F_TOL
+        /* Fine-grained adjustment */
         if (hsi48trim_goto_next() == 0) {
           /* HSI48 trimming has gone through one round, do coarse adjustment */
           freq = pwm_get_next_freq();
@@ -145,10 +148,23 @@ int main(void) {
             freq = F_MIN;
           }
           pwm_config(freq, DUTY, DEAD_TIME);
+          freq = pwm_get_next_freq();
+	  if (freq > F_MAX) {
+            freq = F_MIN;
+          }
+	  pwm_config(freq, DUTY, DEAD_TIME);
         } else {
           /* Fine adjustment has been done */
           pwm_enable();
         }
+#else
+        /* Coarse-grained adjustment */
+        freq = pwm_get_next_freq();
+        if (freq > F_MAX) {
+          freq = F_MIN;
+        }
+	pwm_config(freq, DUTY, DEAD_TIME);
+#endif
       }
     }
   }
