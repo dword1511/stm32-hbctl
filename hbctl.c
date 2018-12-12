@@ -11,13 +11,13 @@
 #define TICK_PERIOD_MS  10
 #define CS_SAMP_T_MS    5 /* Must be smaller than tick interval */
 #define OVP_MA          1000
-#define F_NOM           800000
+#define F_NOM           1000000
 #define F_TOL           100000
 #define F_TOL_COARSE    100000
 #define F_MAX           (F_NOM + F_TOL)
 #define F_MIN           (F_NOM - F_TOL)
 #define DUTY            127 /* out of 255. Use 127 or less for soft switching */
-#define DEAD_TIME       20
+#define DEAD_TIME       50
 #define DELAY_LONG_MS   500
 #define DELAY_SHORT_MS  50
 
