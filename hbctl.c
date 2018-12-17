@@ -11,7 +11,7 @@
 #define TICK_PERIOD_MS  10
 #define CS_SAMP_T_MS    5 /* Must be smaller than tick interval */
 #define OVP_MA          1000
-#define F_NOM           1000000
+#define F_NOM           1050000
 #define F_TOL           100000
 #define F_TOL_COARSE    100000
 #define F_MAX           (F_NOM + F_TOL)
