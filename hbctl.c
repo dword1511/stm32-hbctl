@@ -101,10 +101,10 @@ int main(void) {
   /* Enable & reset GPIOA and GPIOB */
   rcc_periph_clock_enable(RCC_GPIOA);
   rcc_periph_reset_pulse(RST_GPIOA);
-  gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO_ALL & (~(GPIO13 | GPIO14))); /* Keep SWD active */
+  gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_PULLDOWN, GPIO_ALL & (~(GPIO13 | GPIO14))); /* Keep SWD active, pull down all pins to keep bridge disabled */
   rcc_periph_clock_enable(RCC_GPIOB);
   rcc_periph_reset_pulse(RST_GPIOB);
-  gpio_mode_setup(GPIOB, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO_ALL);
+  gpio_mode_setup(GPIOB, GPIO_MODE_ANALOG, GPIO_PUPD_PULLDOWN, GPIO_ALL);
 
   hci_setup();
 
