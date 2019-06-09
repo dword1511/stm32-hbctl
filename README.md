@@ -24,6 +24,7 @@ You will need the following packages (Debian/Ubuntu):
 The firmware can be loaded via USB DFU. However, you can also flash and debug via SWD. To do so, install the following package:
 
 * stlink-tools
+* gdb-multiarch
 
 This project uses `libopencm3`. It will be automatically checked out during the building process.
 To build the firmware, run `make`. To flash it, hold the `ISP/USR` button on the board, connect the board to USB, and then run `make flash-dfu`.
@@ -37,3 +38,16 @@ Connect 12 V DC power to the 12 V port with a 4 mm banana test lead. Connect a v
 
 Power the board on and observe the LEDs starting to flash. Use the `ISP/USR` button to enable the half-bridge. Then use the same button to cycle through frequencies.
 The matching network reaches resonance when the output voltage peaks. Bridge current can be monitored by attaching an oscilloscope probe to the `CSP` pin.
+
+## Publication
+
+This project was part of the following work. Please kindly consider citing the paper as shown:
+
+```
+@inproceedings{Capttery,
+ author = {Zhang, Chi and Kumar, Sidharth and Bharadia, Dinesh},
+ title = {{Capttery: Scalable Battery-like Room-level Wireless Power}},
+ booktitle = {Proc. of ACM MobiSys},
+ year = {2019},
+}
+```
